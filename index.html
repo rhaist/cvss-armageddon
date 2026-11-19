@@ -268,6 +268,30 @@ html,body{margin:0;background:#050505;color:#e9f2dd}
 .cva.geo .cva-xmas-small{color:#ccffcc}
 @media (prefers-reduced-motion:no-preference){ .cva.geo .cva-xmas{animation:cvaLights 1.2s steps(2) infinite} }
 @keyframes cvaLights{50%{border-color:#00ff00}}
+/* ---------- phones ---------- */
+@media (max-width:640px){
+  .cva > header{display:flex;flex-direction:column}
+  .cva > header > .cva-stripe{order:0}
+  .cva > header > .cva-kicker{order:1}
+  .cva > header > .cva-title{order:2}
+  .cva > header > .cva-take{order:3}
+  .cva > header > .cva-row{order:4}
+  .cva > header > .cva-xmas{order:5;float:none;width:100%;margin:16px 0 0}
+  .cva-btn,.dash-select{min-height:44px}
+  .cva-ctl input[type=search]{min-height:44px;flex-basis:100%}
+  .cva-ctl label{min-height:44px}
+  .cva-ctl label input[type=checkbox]{width:22px;height:22px}
+  .cva-count{margin-left:0}
+  .cva-xmas-cap input{min-height:36px;width:8ch;font-size:16px}
+  .cva-clist summary{padding:10px 0;min-height:44px;align-items:center}
+  .cva-sub,.cva-basis{font-size:13px}
+  .cva-xmas-small{font-size:12.5px}
+  .cva-tags span,.cva-blab,.cva-pvendor,.cva-conf{font-size:11.5px}
+  .cva-clist .vd{font-size:12px}
+  .cva-prod-head{grid-template-columns:auto 1fr}
+  .cva-blast{grid-column:1 / -1;text-align:left;display:flex;gap:8px;align-items:baseline}
+  .cva-blab{margin-top:0}
+}
 </style>
 
 <div class="cva geo" id="cva">
@@ -557,7 +581,7 @@ dash.draw('gauge', (el) => {
   if (r.status !== 'ok' || !r.data || !r.data[0]) { el.textContent = r.status === 'error' ? 'Failed to load' : '—'; return; }
   const max = r.data[0].max;
   const w = Math.max(220, el.clientWidth || 300), h = Math.min(190, w * 0.62);
-  const cx = w / 2, cy = h - 26, R = Math.min(w / 2 - 14, h - 40);
+  const cx = w / 2, cy = h - 26, R = Math.min(w / 2 - 28, h - 40);
   const ang = d3.scaleLinear().domain([0, 10]).range([-Math.PI / 2, Math.PI / 2]);
   const zones = [[0, 4, '#3f6b2a'], [4, 7, '#c9a400'], [7, 9, '#ff7a1a'], [9, 10, '#ff2d55']];
   el.replaceChildren();
@@ -705,7 +729,7 @@ dash.draw('cards', (el) => {
   const byKey = d3.group(matching, (d) => d.group);
   let prods = r.data.filter((p) => byKey.has(p.group));
   if (window.cvaState.sort === 'score') prods = prods.slice().sort((a, b) => b.worst - a.worst || b.tier - a.tier || b.cves - a.cves);
-  const LIMIT = 30;
+  const LIMIT = window.matchMedia && window.matchMedia('(max-width: 640px)').matches ? 12 : 30;
   document.querySelectorAll('#more-row').forEach((m) => { m.hidden = window.cvaState.all || prods.length <= LIMIT; });
   if (!window.cvaState.all) prods = prods.slice(0, LIMIT);
   if (!prods.length) {
