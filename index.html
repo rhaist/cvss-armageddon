@@ -295,6 +295,10 @@ html,body{margin:0;background:#050505;color:#e9f2dd}
   .cva-prod-head{grid-template-columns:auto 1fr}
   .cva-blast{grid-column:1 / -1;text-align:left;display:flex;gap:8px;align-items:baseline}
   .cva-blab{margin-top:0}
+  .cva-row > .cva-quip{flex:1 1 100%}
+  .cva-row > .dash-select,.cva-row > .cva-btn{flex:1 1 calc(50% - 5px)}
+  .cva-grid > .cva-tile:last-child:nth-child(odd){grid-column:1 / -1}
+  #footer98 .cva-row > .cva-btn,#more-row .cva-btn{flex:1 1 100%;width:100%}
 }
 </style>
 
@@ -390,7 +394,7 @@ html,body{margin:0;background:#050505;color:#e9f2dd}
     </div>
     <p class="cva-gb" id="gb-msg" hidden>📖 Guestbook temporarily closed. A threat actor signed it first, then dropped the table. Webmaster is restoring from a backup that turns out to be on the same NAS.</p>
     <div class="cva-badges" id="badges"><span>Y2K COMPLIANT ✓</span><span>MADE WITH NOTEPAD</span><span>VALID HTML 3.2*</span><span>CVSS 10 INSIDE</span><span>FRAMES-FREE ZONE</span><span>NO SBOM REQUIRED</span></div>
-    <p class="cva-ring">« Prev CVE | 🕸️ The Patch Tuesday Webring 🕸️ | Next CVE »<br>Best viewed in a 1998 browser at 800×600 with the speakers off · *not valid since 1998 · © 1998–2026 The Webmaster</p>
+    <p class="cva-ring"><span style="white-space:nowrap">« Prev CVE</span> | <span style="white-space:nowrap">🕸️ The Patch Tuesday Webring 🕸️</span> | <span style="white-space:nowrap">Next CVE »</span><br>Best viewed in a 1998 browser at 800×600 with the speakers off · *not valid since 1998 · © 1998–2026 The Webmaster</p>
   </div>
   <p class="cva-public">Public snapshot edition · CVE data as of <span data-draw="asof2">—</span> UTC · blast-radius tiers are estimates · not affiliated with any vendor named here</p>
 </div>
