@@ -7,15 +7,24 @@ Live page: GitHub Pages for this repo (Settings → Pages → Deploy from branch
 ## What's in it
 
 - `index.html` – the whole page, no build step. Uses d3 v7 from cdnjs.
-- `data/critical.json` – every CVE first published 6–19 Nov 2026 (UTC) whose highest CVSS base score is ≥ 9.0, with a normalised product group.
+- `data/critical.json` – every CVE first published in the last 14 UTC days whose highest CVSS base score is ≥ 9.0, with a normalised product group.
 - `data/all_window.json` – every CVE published in the same window, with score, severity and publication time.
 - `data/blast.json` – blast-radius tier per product group (1 = under ~1k deployments, 5 = millions). About 20 tiers are backed by a published install or exposure count (linked in the file); about 140 are order-of-magnitude estimates; the rest are unrated.
-- `tools/` – the Python scripts that built the data from [CVEProject/cvelistV5](https://github.com/CVEProject/cvelistV5).
+- `tools/refresh.py` – rebuilds `data/critical.json` and `data/all_window.json` from [CVEProject/cvelistV5](https://github.com/CVEProject/cvelistV5) for the last 14 UTC days and lists products that have no blast-radius tier yet.
+- `tools/add_tiers.py` – merges new tiers into `data/blast.json`. Measured tiers are never overwritten by estimates.
+- `tools/groups.py` – normalises vendor/product names into product groups.
 
 ## Caveats
 
-- Snapshot as of 19 Nov 2026, 22:01 UTC. It does not update itself.
+- A snapshot, refreshed nightly; the page shows the snapshot time.
 - Scores are the highest CVSS in each record (CNA or CISA ADP) and mix CVSS 3.1 and 4.0.
 - Blast radius measures how many systems might run a product, not how many are vulnerable. Many of these bugs need a specific configuration.
 - Not a measure of exploitation. Check CISA KEV and the vendor advisory.
 - The jokes are jokes. The scores are not.
+
+## Refreshing
+
+```sh
+python3 tools/refresh.py --days 14 --work /tmp/cva   # needs curl and network access to GitHub
+python3 tools/add_tiers.py new_tiers.json            # optional: tier the products refresh.py lists as UNRATED
+```
