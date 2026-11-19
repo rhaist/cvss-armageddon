@@ -14,7 +14,7 @@ Live page: GitHub Pages for this repo (Settings → Pages → Deploy from branch
 
 ## Caveats
 
-- Snapshot as of 19 Nov 2026, 17:38 UTC. It does not update itself.
+- Snapshot as of 19 Nov 2026, 22:01 UTC. It does not update itself.
 - Scores are the highest CVSS in each record (CNA or CISA ADP) and mix CVSS 3.1 and 4.0.
 - Blast radius measures how many systems might run a product, not how many are vulnerable. Many of these bugs need a specific configuration.
 - Not a measure of exploitation. Check CISA KEV and the vendor advisory.

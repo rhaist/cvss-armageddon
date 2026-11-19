@@ -41,7 +41,7 @@ for f in sorted(glob.glob(src+'/*.json')):
             url='https://www.cve.org/CVERecord?id='+row['id'],day=row['day']))
 crit.sort(key=lambda c:(-c['score'],c['id']))
 meta=[{"label":"build.py","value":code,"type":"code","lang":"python"},
-      {"label":"Input","value":"CVEProject/cvelistV5 records listed as new in cves/deltaLog.json, first published 6-19 Nov 2026 UTC (snapshot 17:38 UTC on 19 Nov)"}]
+      {"label":"Input","value":"CVEProject/cvelistV5 records listed as new in cves/deltaLog.json, first published 6-19 Nov 2026 UTC (snapshot 22:01 UTC on 19 Nov)"}]
 json.dump({"rows":crit,"meta":meta},open(outdir+'/critical.json','w'),ensure_ascii=False)
 json.dump({"rows":allrows,"meta":meta},open(outdir+'/all_window.json','w'),ensure_ascii=False)
 print('not today',notToday,'all',len(allrows),'crit',len(crit))

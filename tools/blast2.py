@@ -53,12 +53,30 @@ T2=['Adobe Connect','Oracle AutoVue','Arista Wi-Fi Access Point','FortiAuthentic
     'Devolutions Agent','Airlock by Ergon Airlock Gateway','Ivanti Cloud Services Application','Edimax routers & gateways','Cudy routers & gateways','Microsoft Azure DevOps']
 for g in T2:
     if g not in rows: add(g,2,'Roughly low thousands of deployments',name={'OpenCTI-Platform opencti':'OpenCTI','lxc/incus':'Incus','siyuan-note/siyuan':'SiYuan','nocodb':'NocoDB','dokploy':'Dokploy','zoneminder':'ZoneMinder','getgrav/grav':'Grav CMS'}.get(g))
+LATE=[('OpenSSL',5,'In most servers, operating systems and appliances','EVP_EncodeBlock needs an input close to INT_MAX, and the QUIC bug only matters if you use OpenSSL QUIC, so real exposure is far smaller.','OpenSSL'),
+ ('nltk',4,'Millions of monthly pip installs',EST,'NLTK'),
+ ('MongoDB Java Driver',4,'Very large Java app footprint','Only affects connections using a DNS seedlist (mongodb+srv) URI.',None),
+ ('Splunk Enterprise',4,'Large enterprise SIEM footprint','Two of these are pre-authentication; check which Splunk version you run.',None),
+ ('Splunk Enterprise Security',3,'Roughly tens of thousands of deployments',EST,None),
+ ('Splunk SOAR',3,'Roughly tens of thousands of deployments',EST,None),
+ ('MongoDB C# Driver',3,'Roughly tens of thousands of apps','Only affects connections using a DNS SRV connection string.',None),
+ ('IBM Guardium Data Protection',3,'Roughly tens of thousands of deployments',EST,None),
+ ('WatchGuard Dimension',3,'Roughly tens of thousands of deployments',EST,None),
+ ('etherpad',3,'Roughly tens of thousands of deployments',EST,'Etherpad'),
+ ('Apache SeaTunnel Web',2,'Roughly low thousands of deployments','Marked unsupported when assigned: there may be no fix coming.',None),
+ ('Autonomy Logic OpenPLC Runtime',2,'Roughly low thousands of deployments','Industrial control runtime; mostly labs and small installs.','OpenPLC Runtime'),
+ ('fabiolb/fabio',2,'Roughly low thousands of deployments',EST,'Fabio'),
+ ('Apache Iggy',1,'Under ~1,000 deployments',EST,None),
+ ('Apache Iggy Go SDK',1,'Under ~1,000 deployments',EST,None),
+ ('lbr38/repomanager',1,'Under ~1,000 deployments',EST,'RepoManager'),
+ ('flytohub/flyto-core',1,'Under ~1,000 deployments',EST,'Flyto Core')]
+for g,t,r,b,n in LATE: add(g,t,r,b,name=n)
 for g in ['Apache Roller','Apache Allura','n/a/Intel(R) TDX Migration Trust Domain (MigTD)','Intel(R) TDX Migration Trust Domain (MigTD)']:
     add(g,1,'Under ~1,000 deployments')
 out=sorted(rows.values(),key=lambda r:(-r['tier'],r['group']))
 meta=[{"label":"blast2.py","value":code,"type":"code","lang":"python"},{"label":"groups.py","value":open('/home/claude/groups.py').read(),"type":"code","lang":"python"},
       {"label":"Input","value":"Earlier blast.json (public counts found by web search on 19 Nov 2026) plus order-of-magnitude estimates for well-known products; everything else is left not rated"}]
 json.dump({"rows":out,"meta":meta},open(sys.argv[1],'w'),ensure_ascii=False)
-c=json.load(open('/home/claude/out/critical.json'))['rows']
+c=json.load(open(sys.argv[2] if len(sys.argv)>2 else '/home/claude/out/critical.json'))['rows']
 gs={group_of(r)[0] for r in c}
 print('rated groups present',len([g for g in gs if g in rows]),'of',len(gs)); print('unused rules',[g for g in rows if g not in gs])
