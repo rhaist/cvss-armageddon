@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CVSS Armageddon — public edition</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+html,body{margin:0;background:#050505;color:#e9f2dd}
+#dash-root{max-width:1280px;margin:0 auto;padding:12px}
+.dash-skeleton{opacity:.35}
+.dash-select{font:inherit;font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #2a3524;background-color:#0a0d08;color:#e9f2dd;max-width:100%}
+.cva-public{margin:14px 0 0;font-size:11px;color:#93a387;text-align:center}
+.cva.geo .cva-public{color:#c8c8ff;font-family:"Times New Roman",serif}
+</style>
+<script>
+/* A tiny stand-in for the dashboard runtime: loads the data files, runs the calculations, redraws on change. */
+(function () {
+  const FILES = { critical: 'data/critical.json', all_window: 'data/all_window.json', blast: 'data/blast.json' };
+  const sources = {};
+  const calcs = {};
+  const draws = {};
+  const mounted = new Map();
+  const cache = {};
+  let params = { window: '7d' };
+  let gen = 0;
+  let ready = false;
+  Object.keys(FILES).forEach((id) => { sources[id] = { status: 'loading', data: [] }; });
+
+  function data(id) {
+    if (sources[id]) return sources[id];
+    const c = calcs[id];
+    if (!c) return { status: 'missing', data: [] };
+    if (cache[id] && cache[id].gen === gen) return cache[id].res;
+    const ins = c.inputs.map(data);
+    let res;
+    if (ins.some((i) => i.status === 'error')) res = { status: 'error', data: null };
+    else if (ins.some((i) => i.status !== 'ok')) res = { status: 'loading', data: null };
+    else {
+      try { res = { status: 'ok', data: c.fn(...ins.map((i) => i.data)) }; }
+      catch (e) { console.error('calc', id, e); res = { status: 'error', data: null }; }
+    }
+    cache[id] = { gen, res };
+    return res;
+  }
+  function runOne(name, el) {
+    const d = draws[name];
+    if (!d) return;
+    try {
+      if (typeof d === 'function') d(el);
+      else {
+        let m = mounted.get(el);
+        if (!m) { el.replaceChildren(); m = { made: d.mount(el) }; mounted.set(el, m); }
+        if (d.update) d.update(el, m.made);
+      }
+    } catch (e) { console.error('draw', name, e); }
+  }
+  function run(name) {
+    document.querySelectorAll(`[data-draw="${name}"]`).forEach((el) => { if (!el.closest('[hidden]')) runOne(name, el); });
+  }
+  function runAll() { if (ready) Object.keys(draws).forEach(run); }
+
+  window.dash = {
+    data,
+    calc: (id, def) => { calcs[id] = def; },
+    draw: (name, fn) => { if (fn) { draws[name] = fn; if (ready) run(name); } else run(name); },
+    params: () => Object.assign({}, params),
+    setParams: (p) => { params = Object.assign({}, params, p); gen++; runAll(); },
+    resetParams: () => { params = { window: '7d' }; gen++; runAll(); },
+    onData: () => {},
+    setLink: () => {},
+    colors: []
+  };
+
+  Object.entries(FILES).forEach(([id, url]) => {
+    fetch(url).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((j) => { sources[id] = { status: 'ok', data: Array.isArray(j) ? j : (j.rows || []) }; })
+      .catch((e) => { console.error('load', id, e); sources[id] = { status: 'error', data: [] }; })
+      .finally(() => { gen++; runAll(); });
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    ready = true;
+    runAll();
+    let lastW = document.documentElement.clientWidth, t = null;
+    window.addEventListener('resize', () => {
+      const w = document.documentElement.clientWidth;
+      if (w === lastW) return;
+      lastW = w; clearTimeout(t); t = setTimeout(runAll, 150);
+    });
+  });
+})();
+</script>
+</head>
+<body>
+<div id="dash-root">
+<style>
+.cva{--bg:#0c0f0a;--panel:#141a11;--line:#2a3524;--fg:#e9f2dd;--mut:#93a387;--tox:#b6ff3b;--haz:#ffb000;--hot:#ff4d2e;--red:#ff2d55;
+  background:var(--bg);color:var(--fg);border-radius:14px;padding:clamp(14px,3vw,28px);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;position:relative;overflow:hidden}
+.cva *{box-sizing:border-box}
+.cva a{color:var(--tox)}
+.cva-stripe{height:10px;border-radius:4px;margin-bottom:16px;background:repeating-linear-gradient(-45deg,var(--haz) 0 14px,#111 14px 28px)}
+.cva-kicker{margin:0;color:var(--haz);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.cva-title{margin:6px 0 4px;font-size:clamp(28px,6vw,52px);line-height:1;letter-spacing:-.02em;color:var(--tox);text-shadow:0 0 18px rgba(182,255,59,.35)}
+.cva-take{font-size:clamp(15px,2.2vw,19px);line-height:1.45;max-width:62ch;margin:12px 0}
+.cva-take b{color:var(--hot);font-weight:700}
+.cva-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px}
+.cva-quip{flex:1 1 260px;margin:0;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;color:var(--mut);font-size:13px;cursor:pointer;min-height:42px}
+.cva-quip-label{color:var(--haz)}
+.cva-btn{font:inherit;font-size:13px;font-weight:700;padding:10px 14px;border-radius:8px;border:2px solid var(--red);background:transparent;color:var(--red);cursor:pointer}
+.cva-btn[aria-pressed="true"]{background:var(--red);color:#fff}
+.cva-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:20px 0}
+.cva-tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.cva-tile .n{font-size:34px;font-weight:800;line-height:1.05;color:var(--fg);font-variant-numeric:tabular-nums;display:block;min-height:36px}
+.cva-tile .l{font-size:12px;color:var(--haz);text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px}
+.cva-tile .s{font-size:12px;color:var(--mut);margin:6px 0 0}
+.cva-tile.hot .n{color:var(--red)}
+.cva-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
+.cva-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.cva-h2{font-size:15px;margin:0 0 2px;color:var(--fg)}
+.cva-sub{font-size:12px;color:var(--mut);margin:0 0 10px}
+.cva-chart{position:relative;min-height:190px}
+.cva-gauge{position:relative;min-height:170px}
+.cva-tip{position:absolute;pointer-events:none;background:#000;border:1px solid var(--tox);color:var(--fg);font-size:12px;padding:6px 8px;border-radius:6px;white-space:nowrap;z-index:5}
+.cva-bars{display:grid;gap:6px;min-height:120px}
+.cva-bar{display:grid;grid-template-columns:minmax(80px,38%) 1fr auto;gap:8px;align-items:center;font-size:12px}
+.cva-bar .lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.cva-bar .trk{height:14px;background:#0a0d08;border-radius:3px;overflow:hidden}
+.cva-bar .fill{height:100%;border-radius:3px}
+.cva-bar .val{font-variant-numeric:tabular-nums;color:var(--fg);min-width:3ch;text-align:right}
+.cva-sec{margin-top:26px}
+.cva-ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0 14px;font-size:13px}
+.cva-ctl input[type=search]{font:inherit;font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0a0d08;color:var(--fg);flex:1 1 200px;min-width:0}
+.cva-ctl .dash-select{background-color:#0a0d08;color:var(--fg);border:1px solid var(--line);font:inherit;font-size:13px;max-width:100%}
+.cva-ctl label{display:flex;gap:6px;align-items:center;color:var(--mut);cursor:pointer}
+.cva-count{color:var(--mut);font-size:12px;margin-left:auto}
+.cva-doom{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px;min-height:200px}
+.cva-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:auto}
+.cva-tags span{font-size:10.5px;padding:2px 6px;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
+.cva-tags span.bad{border-color:var(--hot);color:var(--hot)}
+.cva-empty{color:var(--mut);font-size:13px;padding:20px 0}
+.cva-foot{margin-top:24px;font-size:12px;color:var(--mut)}
+.cva-foot summary{cursor:pointer;color:var(--haz)}
+.cva-foot p{line-height:1.5;max-width:80ch}
+.cva.panic{--panel:#2a0b0b;--line:#5c1a1a}
+.cva.panic .cva-title{color:var(--red);text-shadow:0 0 22px rgba(255,45,85,.6)}
+@media (prefers-reduced-motion:no-preference){
+  .cva-stripe{background-size:40px 40px;animation:cvaSlide 1.6s linear infinite}
+  .cva.panic{animation:cvaShake .35s linear infinite}
+  .cva-quip span[data-draw]{animation:cvaFade .5s ease-out}
+}
+@keyframes cvaSlide{from{background-position:0 0}to{background-position:40px 0}}
+@keyframes cvaShake{25%{transform:translate(1px,-1px)}75%{transform:translate(-1px,1px)}}
+@keyframes cvaFade{from{opacity:0}to{opacity:1}}
+.cva-prodlist{grid-template-columns:repeat(auto-fill,minmax(min(100%,440px),1fr))}
+.cva-prod{background:var(--panel);border:1px solid var(--line);border-left:6px solid #56634d;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.cva-prod.t5{border-left-color:var(--red);box-shadow:0 0 24px rgba(255,45,85,.25)}
+.cva-prod.t4{border-left-color:#ff7a1a}
+.cva-prod.t3{border-left-color:var(--haz)}
+.cva-prod.t2{border-left-color:#8fbf3a}
+.cva-prod-head{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start}
+.cva-rank{font-size:20px;font-weight:800;color:var(--mut);font-variant-numeric:tabular-nums;min-width:2.4ch}
+.cva-pname{margin:0;font-size:clamp(20px,3vw,26px);line-height:1.1;font-weight:800;color:var(--tox);overflow-wrap:anywhere;font-family:inherit}
+.cva-prod.t5 .cva-pname{color:#fff;text-shadow:0 0 14px rgba(255,45,85,.7)}
+.cva-pvendor{display:block;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+.cva-blast{text-align:right;white-space:nowrap}
+.cva-pips{display:block;font-size:15px;letter-spacing:1px;color:var(--hot)}
+.cva-pips .off{opacity:.15}
+.cva-blab{display:block;font-size:10px;letter-spacing:.12em;color:var(--haz);margin-top:2px}
+.cva-reach{margin:0;font-size:14px;color:var(--fg);line-height:1.4}
+.cva-conf{font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--mut);margin-left:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.cva-conf.measured{border-color:var(--tox);color:var(--tox)}
+.cva-basis{margin:0;font-size:12px;color:var(--mut);line-height:1.45}
+.cva-pstats{font-size:12px;color:var(--mut)}
+.cva-pstats b{color:var(--hot)}
+.cva-clist{display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none}
+.cva-clist details{border-top:1px solid var(--line);padding-top:5px}
+.cva-clist summary{cursor:pointer;display:flex;gap:8px;align-items:baseline;font-size:12px;flex-wrap:wrap}
+.cva-clist .sc{font-weight:800;color:var(--hot);font-variant-numeric:tabular-nums}
+.cva-clist .ten .sc{color:var(--red)}
+.cva-clist .vd{color:var(--haz);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.cva-clist .sum{font-size:12px;color:var(--mut);margin:6px 0;line-height:1.45;overflow-wrap:anywhere}
+@media (prefers-reduced-motion:no-preference){.cva-prod.t5{animation:cvaGlow 2.2s ease-in-out infinite}}
+@keyframes cvaGlow{50%{box-shadow:0 0 36px rgba(255,45,85,.5)}}
+/* ---------- 1998 mode ---------- */
+.cva-geo-only,.cva-marquee,.cva-new{display:none}
+.cva.geo .cva-geo-only{display:block}
+.cva.geo .cva-now-only{display:none}
+.cva.geo .cva-new{display:inline-block;background:#ff0000;color:#ffff00;font:bold 12px Arial,sans-serif;padding:1px 5px;margin-left:8px;border:2px outset #ff8080;vertical-align:middle;text-decoration:none}
+.cva.geo{--bg:#000018;--panel:#000060;--line:#8080c0;--fg:#ffffff;--mut:#c8c8ff;--tox:#00ff00;--haz:#ffff00;--hot:#ff6600;--red:#ff00ff;
+  background-color:#000018;
+  background-image:radial-gradient(1px 1px at 20px 30px,#fff,transparent),radial-gradient(1px 1px at 120px 80px,#ffff66,transparent),radial-gradient(1.5px 1.5px at 60px 150px,#fff,transparent),radial-gradient(1px 1px at 170px 20px,#66ffff,transparent),radial-gradient(1px 1px at 90px 110px,#fff,transparent),radial-gradient(1px 1px at 150px 175px,#ff99ff,transparent);
+  background-size:200px 200px;font-family:"Comic Sans MS","Comic Sans","Chalkboard SE","Comic Neue",cursive;border:5px ridge #c0c0c0;border-radius:0}
+.cva.geo .cva-title{font-family:Impact,Haettenschweiler,"Arial Black",sans-serif;font-weight:400;letter-spacing:.03em;background:linear-gradient(90deg,#ff0000,#ff8800,#ffff00,#00ff00,#00ffff,#3366ff,#ff00ff,#ff0000);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(3px 3px 0 #000)}
+.cva.geo .cva-kicker{font-family:"Courier New",monospace;color:#00ff00}
+.cva.geo .cva-take{font-family:"Times New Roman",Times,serif;font-size:clamp(17px,2.4vw,21px)}
+.cva.geo .cva-take b{color:#ffff00;background:#ff0000;padding:0 4px}
+.cva.geo .cva-h2{font-family:"Times New Roman",Times,serif;color:#ffff00;text-decoration:underline}
+.cva.geo .cva-card,.cva.geo .cva-tile,.cva.geo .cva-prod{border-radius:0;border:3px outset #c0c0c0;background:#000060;box-shadow:4px 4px 0 #000}
+.cva.geo .cva-prod{border-left:8px solid #808080}
+.cva.geo .cva-prod.t5{border-left-color:#ff00ff}
+.cva.geo .cva-prod.t4{border-left-color:#ff6600}
+.cva.geo .cva-prod.t3{border-left-color:#ffff00}
+.cva.geo .cva-prod.t2{border-left-color:#00ff00}
+.cva.geo .cva-card > .cva-h2{display:flex;justify-content:space-between;background:linear-gradient(90deg,#000080,#1084d0);color:#fff;text-decoration:none;margin:-14px -14px 10px;padding:3px 6px;font:bold 13px Tahoma,"MS Sans Serif",Arial,sans-serif}
+.cva.geo .cva-card > .cva-h2::after{content:"_ \25A1 \00D7";letter-spacing:5px;font-weight:bold}
+.cva.geo .cva-tile .l{font-family:Arial,sans-serif;color:#00ffff}
+.cva.geo .cva-tile .n{font-family:"Courier New",monospace;color:#00ff00;text-shadow:0 0 6px #00ff00}
+.cva.geo .cva-tile.hot .n{color:#ff00ff;text-shadow:0 0 6px #ff00ff}
+.cva.geo .cva-pname{font-family:"Times New Roman",Times,serif;color:#00ff00;text-shadow:2px 2px 0 #000}
+.cva.geo .cva-prod.t5 .cva-pname{color:#ffff00;text-shadow:2px 2px 0 #ff00ff}
+.cva.geo .cva-btn{border-radius:0;border:3px outset #e0e0e0;background:#c0c0c0;color:#000;font:bold 13px Tahoma,"MS Sans Serif",Arial,sans-serif}
+.cva.geo .cva-btn:active,.cva.geo .cva-btn[aria-pressed="true"]{border-style:inset}
+.cva.geo .cva-btn[aria-pressed="true"]{background:#ff00ff;color:#fff}
+.cva.geo a{color:#00ffff;text-decoration:underline}
+.cva.geo a:visited{color:#ff99ff}
+.cva.geo .cva-stripe{height:22px;border-radius:0;background:repeating-linear-gradient(-45deg,#ffd800 0 16px,#000 16px 32px)}
+.cva.geo .cva-tip{background:#ffffe1;color:#000;border:1px solid #000;border-radius:0;font-family:Tahoma,Arial,sans-serif}
+.cva.geo .cva-ctl input[type=search],.cva.geo .cva-ctl .dash-select,.cva.geo .cva-row .dash-select{border-radius:0;border:2px inset #c0c0c0;background-color:#ffffff;color:#000000;font-family:"Times New Roman",serif}
+.cva.geo .cva-quip{border:2px dashed #ff00ff;color:#ffffff;font-family:"Comic Sans MS","Comic Sans",cursive}
+.cva.geo .cva-conf{border-radius:0}
+.cva.geo .cva-tags span{border-radius:0;background:#000;color:#00ffff}
+.cva.geo .cva-marquee{display:block;overflow:hidden;white-space:nowrap;background:#000;border:3px inset #c0c0c0;color:#ffff00;font:bold 14px "Courier New",monospace;padding:5px 0;margin:0 0 12px}
+.cva-marquee-track{display:inline-block;padding-left:100%}
+.cva-marquee-track b{color:#ff3333}
+.cva.geo .cva-uc{text-align:center;font:bold 15px Arial,sans-serif;color:#000;background:repeating-linear-gradient(45deg,#ffd800 0 20px,#ffb000 20px 40px);border:3px outset #ffe680;padding:6px;margin:10px 0}
+.cva.geo .cva-counter-row{text-align:center;margin:14px 0;font-family:"Times New Roman",serif;color:#c8c8ff}
+.cva-counter{display:inline-block;font:bold 22px "Courier New",monospace;background:#000;color:#00ff00;border:3px inset #808080;padding:2px 8px;letter-spacing:5px;vertical-align:middle}
+.cva.geo .cva-hr{height:6px;border:0;margin:18px 0;background:linear-gradient(90deg,#f00,#f80,#ff0,#0f0,#0ff,#00f,#f0f)}
+.cva.geo .cva-badges{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:12px 0}
+.cva-badges span{display:inline-flex;align-items:center;justify-content:center;width:88px;height:31px;font:bold 9px/1.1 Arial,sans-serif;text-align:center;border:2px outset #c0c0c0;padding:2px}
+.cva-badges span:nth-child(1){background:#003399;color:#ffff00}
+.cva-badges span:nth-child(2){background:#ffffff;color:#000080}
+.cva-badges span:nth-child(3){background:#ff6600;color:#ffffff}
+.cva-badges span:nth-child(4){background:#000000;color:#00ff00}
+.cva-badges span:nth-child(5){background:#990099;color:#ffffff}
+.cva-badges span:nth-child(6){background:#c0c0c0;color:#ff0000}
+.cva.geo .cva-ring{text-align:center;font:13px "Times New Roman",serif;color:#c8c8ff}
+.cva.geo .cva-gb{text-align:center;background:#ffffe1;color:#000;border:2px solid #000;padding:8px;font-family:"Comic Sans MS","Comic Sans",cursive}
+.cva.geo .cva-foot summary{font-family:"Times New Roman",serif}
+@media (prefers-reduced-motion:no-preference){
+  .cva.geo .cva-marquee-track{animation:cvaMarquee 55s linear infinite}
+  .cva.geo .cva-blink{animation:cvaBlink 1s steps(2,start) infinite}
+  .cva.geo .cva-title{animation:cvaRainbow 6s linear infinite}
+}
+@media (prefers-reduced-motion:reduce){
+  .cva.geo .cva-marquee{white-space:normal;padding:5px 8px}
+  .cva-marquee-track{padding-left:0}
+}
+@keyframes cvaMarquee{to{transform:translateX(-100%)}}
+@keyframes cvaBlink{to{visibility:hidden}}
+@keyframes cvaRainbow{to{background-position:200% 0}}
+/* ---------- home for Christmas ---------- */
+.cva > header::after{content:"";display:table;clear:both}
+.cva-xmas{float:right;width:min(100%,290px);margin:0 0 12px 16px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:13px;position:relative;z-index:1}
+.cva-xmas-h{margin:0;font-weight:700;color:var(--tox)}
+.cva-xmas-big{margin:6px 0;font-size:15px;line-height:1.35;min-height:44px}
+.cva-xmas-big b{font-size:28px;color:var(--red);display:inline-block;font-variant-numeric:tabular-nums}
+.cva-xmas-cap{display:block;font-size:12px;color:var(--mut);margin:6px 0}
+.cva-xmas-cap input{width:7ch;font:inherit;padding:2px 4px;border-radius:4px;border:1px solid var(--line);background:#0a0d08;color:var(--fg)}
+.cva-xmas-small{margin:0;font-size:11.5px;color:var(--mut);line-height:1.45}
+.cva-xmas-small b{color:var(--fg)}
+.cva.geo .cva-xmas{border-radius:0;background:#003300;border:4px dashed #ff0000;box-shadow:4px 4px 0 #000;font-family:"Comic Sans MS","Comic Sans",cursive}
+.cva.geo .cva-xmas-h{color:#ffff00;font-family:"Times New Roman",Times,serif;font-size:16px;text-shadow:1px 1px 0 #ff0000}
+.cva.geo .cva-xmas-big b{color:#ffffff;text-shadow:2px 2px 0 #ff0000}
+.cva.geo .cva-xmas-cap{color:#ccffcc}
+.cva.geo .cva-xmas-cap input{border-radius:0;border:2px inset #c0c0c0;background:#ffffff;color:#000000}
+.cva.geo .cva-xmas-small{color:#ccffcc}
+@media (prefers-reduced-motion:no-preference){ .cva.geo .cva-xmas{animation:cvaLights 1.2s steps(2) infinite} }
+@keyframes cvaLights{50%{border-color:#00ff00}}
+</style>
+
+<div class="cva geo" id="cva">
+  <div class="cva-marquee" id="ticker" role="marquee" aria-label="Breaking news ticker"><span class="cva-marquee-track" data-draw="ticker">—</span></div>
+  <header id="hero">
+    <div class="cva-stripe"></div>
+    <aside class="cva-xmas" id="xmas">
+      <p class="cva-xmas-h">🎄 You will be home for Christmas…</p>
+      <p class="cva-xmas-big" data-draw="xmas" aria-live="polite">—</p>
+      <label class="cva-xmas-cap">Your team patches <input type="number" id="cva-cap" min="1" max="100000" step="1" value="20" inputmode="numeric"> criticals a week</label>
+      <p class="cva-xmas-small" data-draw="xmasnote">—</p>
+    </aside>
+    <p class="cva-kicker">Fallout report · <span data-draw="range">—</span> · as of <span data-draw="asof">—</span> UTC</p>
+    <h1 class="cva-title">☢ CVSS Armageddon</h1>
+    <p class="cva-take" id="takeaway"><b data-draw="crit">—</b> criticals (CVSS ≥ 9.0) have dropped <span data-draw="win">—</span>, out of <b data-draw="total">—</b> new CVEs. That is <b data-draw="pct">—</b>% of everything published, and <b data-draw="noauth">—</b> of them need no login at all. Widest blast radius: <b data-draw="topblast">—</b>.</p>
+    <div class="cva-row">
+      <p class="cva-quip" id="quip" title="Click for another"><span class="cva-quip-label">Coping strategy:</span> <span data-draw="quip">—</span></p>
+      <select class="dash-select" id="cva-window" aria-label="Time window">
+        <option value="today">Today</option>
+        <option value="7d">Last 7 days</option>
+        <option value="14d">Last 14 days</option>
+      </select>
+      <button class="cva-btn" id="panic" type="button" aria-pressed="false">🚨 Panic button</button>
+      <button class="cva-btn cva-geo-only" id="cva-2026" type="button">🕰️ Back to 2026</button>
+      <button class="cva-btn cva-now-only" id="cva-1998" type="button">📼 Back to 1998</button>
+    </div>
+  </header>
+
+  <p class="cva-geo-only cva-uc" id="construction">🚧 <span class="cva-blink">UNDER CONSTRUCTION</span> 🚧 Like your patch management, this page will never be finished.</p>
+  <p class="cva-geo-only cva-counter-row" id="counter">You are visitor number <span class="cva-counter" data-draw="counter">—</span><br>(visitors = new CVEs in this window; no humans have been here since 1998)</p>
+  <section class="cva-grid" id="tiles">
+    <div class="cva-tile hot" id="tile-tens"><p class="l">Perfect 10s</p><span class="n" data-draw="tens">—</span><p class="s">Cancel the weekend.</p></div>
+    <div class="cva-tile" id="tile-net"><p class="l">Network-reachable</p><span class="n" data-draw="network">—</span><p class="s">Exploitable from the comfort of someone else's couch.</p></div>
+    <div class="cva-tile" id="tile-noauth"><p class="l">No auth needed</p><span class="n" data-draw="noauth2">—</span><p class="s">Privileges required: none. Manners required: none.</p></div>
+    <div class="cva-tile" id="tile-vendors"><p class="l">Vendors in blast radius</p><span class="n" data-draw="vendors">—</span><p class="s">Each one has a press release brewing.</p></div>
+    <div class="cva-tile" id="tile-top"><p class="l">Biggest offender</p><span class="n" style="font-size:20px" data-draw="topv">—</span><p class="s"><span data-draw="topc">—</span> criticals in this window. Somebody get them a coffee.</p></div>
+  </section>
+
+  <section class="cva-cols" id="charts">
+    <div class="cva-card" id="gauge-card">
+      <h2 class="cva-h2">Doom-o-meter</h2>
+      <p class="cva-sub">Worst score in this window</p>
+      <div class="cva-gauge" data-draw="gauge"></div>
+    </div>
+    <div class="cva-card" id="hour-card">
+      <h2 class="cva-h2">When the bombs dropped</h2>
+      <p class="cva-sub">New CVEs per <span data-draw="unit">—</span> (UTC) · <span style="color:var(--hot)">■</span> critical <span style="color:#3d4a35">■</span> everything else</p>
+      <div class="cva-chart" data-draw="hours"></div>
+    </div>
+    <div class="cva-card" id="sev-card">
+      <h2 class="cva-h2">Fallout spectrum</h2>
+      <p class="cva-sub">All new CVEs in this window by severity (highest score in the record)</p>
+      <div class="cva-bars" data-draw="sev"></div>
+    </div>
+    <div class="cva-card" id="vendor-card">
+      <h2 class="cva-h2">Wall of shame</h2>
+      <p class="cva-sub">Critical CVEs per vendor in this window, top 10</p>
+      <div class="cva-bars" data-draw="vend"></div>
+    </div>
+  </section>
+
+  <section class="cva-sec" id="hall">
+    <h2 class="cva-h2" style="font-size:20px;color:var(--tox)">Hall of doom, ranked by blast radius <span class="cva-new cva-blink">NEW!</span></h2>
+    <p class="cva-sub">Every product with a CVSS ≥ 9.0 published in this window, ranked by how many systems could be running it (☢ = under ~1k deployments, ☢☢☢☢☢ = millions), then by worst score. Unrated products sit at the bottom, by score. A <span class="cva-conf measured">measured</span> tag means a published install or exposure count; <span class="cva-conf">estimated</span> means an order-of-magnitude guess. Open a CVE for details. The verdicts are jokes; the scores are not.</p>
+    <div class="cva-ctl">
+      <select class="dash-select" id="cva-sort" aria-label="Rank by">
+        <option value="blast">Rank: blast radius</option>
+        <option value="score">Rank: worst score</option>
+      </select>
+      <input type="search" id="cva-q" placeholder="grep the apocalypse… (vendor, product, CWE, text)" aria-label="Search critical CVEs">
+      <select class="dash-select" id="cva-vendor" data-draw="vendorsel" aria-label="Vendor"></select>
+      <label><input type="checkbox" id="cva-noauth"> No auth only</label>
+      <span class="cva-count">showing <span data-draw="shown">—</span> of <span data-draw="crit3">—</span></span>
+    </div>
+    <div class="cva-doom cva-prodlist" data-draw="cards"></div>
+    <p class="cva-ctl" id="more-row" hidden><button class="cva-btn" id="cva-more" type="button">Show all products</button></p>
+  </section>
+
+  <details class="cva-foot" id="method">
+    <summary>How this is counted (and why you should still read the advisory)</summary>
+    <p>Source: the CVE List V5 (CVEProject/cvelistV5 on GitHub). Included are records first published in the chosen window of UTC days (6–19 November 2026 at most), up to the snapshot time shown at the top. The last day was still going at snapshot time, so its late hours are empty, not quiet. Drupal is missing on purpose: it rates advisories on its own 25-point scale, and the CVE records for this month's Drupal advisories (such as CVE-2026-126725) had not been published to the CVE List at snapshot time.</p>
+    <p>Score: the highest CVSS base score in each record, from the CNA or from CISA's ADP enrichment. The list mixes CVSS 3.1 and 4.0, which are different scales, so a 9.3 in 4.0 and a 9.3 in 3.1 don't mean the same thing. <span data-draw="unscored">—</span> of the records in this window had no score at all yet; NVD scoring usually lags, so some of those may turn critical later.</p>
+    <p>Blast radius: a tier per product from 1 (under ~1k deployments) to 5 (millions), set from public install or internet-exposure counts where they exist (W3Techs, Censys, Shodan, watchTowr, BuiltWith, WordPress.org, ecosyste.ms), an order-of-magnitude judgement for well-known products, and no tier at all for the long tail. It measures how many systems might run the product, not how many are vulnerable: many of these bugs need a specific configuration, and internet-exposure counts undercount internal installs.</p>
+    <p>Not a measure of exploitation. Check CISA KEV and the vendor advisory before you wake anyone up.</p>
+  </details>
+
+  <div class="cva-geo-only" id="footer98">
+    <hr class="cva-hr">
+    <div class="cva-row" style="justify-content:center">
+      <button class="cva-btn" id="cva-gb" type="button">✍️ Sign my guestbook</button>
+      <button class="cva-btn" id="cva-random" type="button">🎲 Random critical</button>
+    </div>
+    <p class="cva-gb" id="gb-msg" hidden>📖 Guestbook temporarily closed. A threat actor signed it first, then dropped the table. Webmaster is restoring from a backup that turns out to be on the same NAS.</p>
+    <div class="cva-badges" id="badges"><span>Y2K COMPLIANT ✓</span><span>MADE WITH NOTEPAD</span><span>VALID HTML 3.2*</span><span>CVSS 10 INSIDE</span><span>FRAMES-FREE ZONE</span><span>NO SBOM REQUIRED</span></div>
+    <p class="cva-ring">« Prev CVE | 🕸️ The Patch Tuesday Webring 🕸️ | Next CVE »<br>Best viewed in a 1998 browser at 800×600 with the speakers off · *not valid since 1998 · © 1998–2026 The Webmaster</p>
+  </div>
+  <p class="cva-public">Public snapshot edition · CVE data as of <span data-draw="asof2">—</span> UTC · blast-radius tiers are estimates · not affiliated with any vendor named here</p>
+</div>
+
+<script>
+dash.calc('crit_win', {
+  inputs: ['critical'],
+  fn: (critical) => {
+    const days = { today: 1, '7d': 7, '14d': 14 }[dash.params().window] || 7;
+    const last = d3.max(critical, (d) => d.day);
+    const from = last ? d3.utcFormat('%Y-%m-%d')(d3.utcDay.offset(new Date(last + 'T00:00:00Z'), -(days - 1))) : '';
+    return critical.filter((d) => d.day >= from);
+  }
+});
+dash.calc('all_win', {
+  inputs: ['all_window'],
+  fn: (all_window) => {
+    const days = { today: 1, '7d': 7, '14d': 14 }[dash.params().window] || 7;
+    const last = d3.max(all_window, (d) => d.day);
+    const from = last ? d3.utcFormat('%Y-%m-%d')(d3.utcDay.offset(new Date(last + 'T00:00:00Z'), -(days - 1))) : '';
+    return all_window.filter((d) => d.day >= from);
+  }
+});
+dash.calc('pace', {
+  inputs: ['critical'],
+  fn: (critical) => {
+    const days = new Set(critical.map((d) => d.day)).size || 1;
+    return [{ per_week: Math.round((critical.length / days) * 7) }];
+  }
+});
+dash.calc('stats', {
+  inputs: ['crit_win', 'all_win'],
+  fn: (critical, all_today) => {
+    const byVendor = d3.rollups(critical, (v) => v.length, (d) => d.vendor).sort((a, b) => b[1] - a[1] || d3.ascending(a[0], b[0]));
+    return [{
+      crit: critical.length,
+      total: all_today.length,
+      pct: all_today.length ? Math.round((critical.length / all_today.length) * 1000) / 10 : 0,
+      tens: critical.filter((d) => d.score >= 10).length,
+      noauth: critical.filter((d) => d.privileges === 'None').length,
+      network: critical.filter((d) => d.attack_vector === 'Network').length,
+      vendors: byVendor.length,
+      top_vendor: byVendor.length ? byVendor[0][0] : '—',
+      top_vendor_count: byVendor.length ? byVendor[0][1] : 0,
+      max: critical.length ? d3.max(critical, (d) => d.score) : 0,
+      unscored: all_today.filter((d) => d.score === null || d.score === undefined).length
+    }];
+  }
+});
+dash.calc('by_time', {
+  inputs: ['all_win'],
+  fn: (all_win) => {
+    const hourly = (dash.params().window || '7d') === 'today';
+    const keys = hourly ? d3.range(24) : Array.from(new Set(all_win.map((d) => d.day))).sort();
+    return keys.map((k) => {
+      const rows = all_win.filter((d) => (hourly ? d.hour : d.day) === k);
+      const critical = rows.filter((d) => d.score !== null && d.score >= 9).length;
+      return { label: hourly ? String(k).padStart(2, '0') + ':00' : k, critical, rest: rows.length - critical, total: rows.length };
+    });
+  }
+});
+dash.calc('by_severity', {
+  inputs: ['all_win'],
+  fn: (all_today) => ['critical', 'high', 'medium', 'low', 'none', 'unscored']
+    .map((severity) => ({ severity, count: all_today.filter((d) => d.severity === severity).length }))
+    .filter((r) => r.count > 0 || r.severity !== 'none')
+});
+dash.calc('by_vendor', {
+  inputs: ['crit_win'],
+  fn: (critical) => d3.rollups(critical, (v) => ({ count: v.length, worst: d3.max(v, (d) => d.score) }), (d) => d.vendor)
+    .map(([vendor, o]) => ({ vendor, count: o.count, worst: o.worst }))
+    .sort((a, b) => b.count - a.count || b.worst - a.worst || d3.ascending(a.vendor, b.vendor))
+});
+dash.calc('ranked', {
+  inputs: ['crit_win', 'blast'],
+  fn: (critical, blast) => {
+    const info = new Map(blast.map((b) => [b.group, b]));
+    return d3.groups(critical, (d) => d.group)
+      .map(([group, cves]) => {
+        const b = info.get(group) || {};
+        return {
+          name: b.name || group, group, vendor: cves[0].vendor, product: cves[0].product,
+          tier: Number(b.tier) || 0, label: b.label || '', reach: b.reach || 'Not rated yet: no install-base estimate', basis: b.basis || '', source: b.source || '',
+          confidence: Number(b.tier) ? (b.confidence || 'estimated') : (b.label ? 'cloud' : 'not rated'), cves: cves.length,
+          worst: d3.max(cves, (d) => d.score), noauth: cves.filter((d) => d.privileges === 'None').length
+        };
+      })
+      .sort((a, b) => b.tier - a.tier || b.worst - a.worst || b.cves - a.cves || d3.ascending(a.name, b.name))
+      .map((r, i) => ({ rank: i + 1, ...r }));
+  }
+});
+</script>
+
+<script>
+window.cvaState = { q: '', vendor: '', noauth: false };
+window.cvaVerdict = (s, id) => {
+  const pools = s >= 10 ? ['MELTDOWN · cancel the weekend', 'Perfect 10. The judges are horrified.', 'DEFCON 1 · locate the fire extinguisher', 'Ten out of ten. Would not recommend.']
+    : s >= 9.8 ? ['Patch before coffee', 'Patch before your next blink', 'The SOC group chat is already typing…', 'Exploit drops before lunch, probably']
+    : s >= 9.5 ? ['Patch before lunch', 'Lunch is cancelled', 'Somebody\'s on-call phone just buzzed', 'Patch before the vendor webinar invite']
+    : ['Patch before the board asks', 'Patch before it trends on social media', 'Patch before the auditor finds it', 'Patch before Friday 16:59'];
+  let h = 0; for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return pools[h % pools.length];
+};
+
+function statOne(el, field, fmt) {
+  const r = dash.data('stats');
+  el.classList.toggle('dash-skeleton', r.status === 'loading');
+  if (r.status !== 'ok' || !r.data || !r.data[0]) { el.textContent = '—'; return; }
+  const v = r.data[0][field];
+  el.textContent = fmt ? fmt(v) : String(v);
+}
+[['crit','crit'],['crit3','crit'],['total','total'],['noauth','noauth'],['noauth2','noauth'],['tens','tens'],['network','network'],['vendors','vendors'],['topv','top_vendor'],['topc','top_vendor_count'],['unscored','unscored']]
+  .forEach(([name, field]) => dash.draw(name, (el) => statOne(el, field)));
+dash.draw('pct', (el) => statOne(el, 'pct', (v) => d3.format('.1f')(v)));
+
+function pubTimes() {
+  const r = dash.data('all_window');
+  if (r.status !== 'ok' || !r.data.length) return null;
+  return d3.max(r.data, (d) => new Date(d.published));
+}
+dash.draw('range', (el) => {
+  const r = dash.data('all_win');
+  el.classList.toggle('dash-skeleton', r.status === 'loading');
+  if (r.status !== 'ok' || !r.data || !r.data.length) { el.textContent = '—'; return; }
+  const days = r.data.map((d) => d.day).sort();
+  const f = (s) => d3.utcFormat('%a %-d %b %Y')(new Date(s + 'T00:00:00Z'));
+  el.textContent = days[0] === days[days.length - 1] ? f(days[0]) : `${f(days[0])} – ${f(days[days.length - 1])}`;
+});
+window.cvaWin = () => dash.params().window || '7d';
+dash.draw('win', (el) => { el.textContent = ({ today: 'on the last day', '7d': 'in the last 7 days', '14d': 'in the last 14 days' })[cvaWin()] || 'in the last 7 days'; });
+dash.draw('unit', (el) => { el.textContent = cvaWin() === 'today' ? 'hour' : 'day'; });
+document.querySelectorAll('#cva-window').forEach((s) => {
+  s.value = cvaWin();
+  s.addEventListener('change', () => { window.cvaState.all = false; dash.setParams({ window: s.value }); });
+});
+dash.draw('asof', (el) => { const t = pubTimes(); el.textContent = t ? d3.utcFormat('%H:%M')(t) : '—'; });
+dash.draw('asof2', (el) => { const t = pubTimes(); el.textContent = t ? d3.utcFormat('%-d %b %Y %H:%M')(t) : '—'; });
+
+/* Coping strategies */
+const QUIPS = [
+  'Have you tried turning the internet off and on again?',
+  'Patch Tuesday is a state of mind.',
+  'Somewhere a change advisory board is scheduling a meeting about scheduling a meeting.',
+  'Your SBOM called. It was crying.',
+  'Asset inventory: the thing you will definitely finish next quarter.',
+  'Every 9.8 is just a 10 that believed in itself a little less.',
+  '"Not exploited yet" is a statement about time, not about safety.',
+  'CVSS 3.1 and 4.0 walk into a bar. Nobody agrees on the bill.',
+  'An air gap is just a firewall with commitment issues resolved.',
+  'Breathe in. Breathe out. Check the vendor advisory.',
+  'Risk accepted. By whom? Great question for the post-mortem.',
+  'The real zero-day was the friends we patched along the way.',
+  'This page is Y2K compliant. Your VPN appliance is not.',
+  'Please sign the guestbook. Your SIEM already logged you.',
+  'Webmaster\'s note: CVSS 4.0 support coming soon (since 1998).',
+  'Our firewall is so old it has a fax number.',
+  'We have a defence-in-depth strategy: hope, then more hope.',
+  'If found, please return this CISO to the nearest coffee machine.',
+  'Every vendor advisory starts with "we take security seriously". So does every incident report.',
+  'Zero trust achieved: we trust nothing on this list.',
+  'Change freeze? The CVEs did not get the memo.',
+  'Somewhere a pentester just whispered "nice".',
+  'Asking the board for budget: CVSS 10. Getting it: CVSS 0.1.',
+  'Patch now, or schedule a very long meeting about why you didn\'t.'
+];
+window.cvaQuip = Math.floor(Math.random() * QUIPS.length);
+dash.draw('quip', {
+  mount: (el) => {
+    const show = () => { el.textContent = QUIPS[window.cvaQuip % QUIPS.length]; el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; };
+    show();
+    const t = setInterval(() => { window.cvaQuip++; show(); }, 7000);
+    const box = el.closest('.cva-quip');
+    const click = () => { window.cvaQuip++; show(); };
+    if (box) box.addEventListener('click', click);
+    return { t, box, click };
+  },
+  update: () => {}
+});
+
+document.querySelectorAll('#panic').forEach((btn) => btn.addEventListener('click', () => {
+  const on = btn.getAttribute('aria-pressed') !== 'true';
+  btn.setAttribute('aria-pressed', String(on));
+  document.querySelectorAll('#cva').forEach((w) => w.classList.toggle('panic', on));
+}));
+</script>
+
+<script>
+/* Doom-o-meter */
+dash.draw('gauge', (el) => {
+  const r = dash.data('stats');
+  el.classList.toggle('dash-skeleton', r.status === 'loading');
+  if (r.status !== 'ok' || !r.data || !r.data[0]) { el.textContent = r.status === 'error' ? 'Failed to load' : '—'; return; }
+  const max = r.data[0].max;
+  const w = Math.max(220, el.clientWidth || 300), h = Math.min(190, w * 0.62);
+  const cx = w / 2, cy = h - 26, R = Math.min(w / 2 - 14, h - 40);
+  const ang = d3.scaleLinear().domain([0, 10]).range([-Math.PI / 2, Math.PI / 2]);
+  const zones = [[0, 4, '#3f6b2a'], [4, 7, '#c9a400'], [7, 9, '#ff7a1a'], [9, 10, '#ff2d55']];
+  el.replaceChildren();
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${w} ${h}`)
+    .attr('role', 'img').attr('aria-label', `Gauge: worst CVSS score in this window is ${max}`);
+  const g = svg.append('g').attr('transform', `translate(${cx},${cy})`);
+  const arc = d3.arc().innerRadius(R * 0.72).outerRadius(R);
+  zones.forEach(([a, b, c]) => g.append('path').attr('d', arc({ startAngle: ang(a), endAngle: ang(b) })).style('fill', c));
+  [0, 4, 7, 9, 10].forEach((v) => {
+    const a = ang(v) - Math.PI / 2;
+    g.append('text').attr('x', Math.cos(a) * (R + 9)).attr('y', Math.sin(a) * (R + 9) + 4)
+      .attr('text-anchor', v === 0 ? 'end' : v === 10 ? 'start' : 'middle')
+      .style('fill', '#93a387').style('font-size', '10px').text(v);
+  });
+  const needle = g.append('line').attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', -R * 0.92)
+    .style('stroke', '#e9f2dd').style('stroke-width', 3).style('stroke-linecap', 'round');
+  g.append('circle').attr('r', 7).style('fill', '#e9f2dd');
+  const target = ang(max) * 180 / Math.PI;
+  const motion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: no-preference)').matches;
+  if (motion && !el.dataset.played) {
+    el.dataset.played = '1';
+    needle.attr('transform', 'rotate(-90)').transition().duration(1400).ease(d3.easeElasticOut.amplitude(1).period(0.4)).attr('transform', `rotate(${target})`);
+  } else needle.attr('transform', `rotate(${target})`);
+  const label = max >= 10 ? 'MELTDOWN' : max >= 9 ? 'CRITICAL MASS' : max >= 7 ? 'SMOULDERING' : 'SUSPICIOUSLY CALM';
+  const box = document.createElement('div');
+  box.style.cssText = 'text-align:center;margin-top:-6px';
+  const num = document.createElement('span');
+  num.style.cssText = 'font-size:30px;font-weight:800;color:#ff2d55;font-variant-numeric:tabular-nums';
+  num.textContent = d3.format('.1f')(max);
+  const lab = document.createElement('div');
+  lab.style.cssText = 'font-size:11px;letter-spacing:.14em;color:#ffb000';
+  lab.textContent = label;
+  box.append(num, lab);
+  el.append(box);
+});
+
+/* Timeline chart */
+dash.draw('hours', (el) => {
+  const r = dash.data('by_time');
+  el.classList.toggle('dash-skeleton', r.status === 'loading');
+  if (r.status !== 'ok' || !r.data) { el.textContent = r.status === 'error' ? 'Failed to load' : '—'; return; }
+  const rows = r.data;
+  const w = Math.max(240, el.clientWidth || 320), h = 190, m = { t: 8, r: 6, b: 22, l: 38 };
+  el.replaceChildren();
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${w} ${h}`)
+    .attr('role', 'img').attr('aria-label', 'Bar chart of new CVEs over time in the chosen window, critical ones highlighted');
+  const x = d3.scaleBand().domain(rows.map((d) => d.label)).range([m.l, w - m.r]).padding(0.18);
+  const y = d3.scaleLinear().domain([0, d3.max(rows, (d) => d.total) || 1]).nice().range([h - m.b, m.t]);
+  const ya = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(-(w - m.l - m.r)));
+  ya.select('.domain').remove();
+  ya.selectAll('line').style('stroke', '#22301c');
+  ya.selectAll('text').style('fill', '#93a387').style('font-size', '10px');
+  const step = rows.length > 16 ? (w < 420 ? 6 : 3) : (w < 420 ? 3 : (rows.length > 8 ? 2 : 1));
+  const xa = svg.append('g').attr('transform', `translate(0,${h - m.b})`)
+    .call(d3.axisBottom(x).tickValues(rows.map((d) => d.label).filter((v, i) => i % step === 0))
+      .tickFormat((v) => v.length === 10 ? d3.utcFormat('%-d %b')(new Date(v + 'T00:00:00Z')) : v.slice(0, 2)).tickSize(0));
+  xa.select('.domain').style('stroke', '#2a3524');
+  xa.selectAll('text').style('fill', '#93a387').style('font-size', '10px').attr('dy', '1.2em');
+  const tip = document.createElement('div'); tip.className = 'cva-tip'; tip.hidden = true; el.append(tip);
+  const g = svg.append('g').selectAll('g').data(rows).join('g');
+  g.append('rect').attr('x', (d) => x(d.label)).attr('width', x.bandwidth())
+    .attr('y', (d) => y(d.rest)).attr('height', (d) => y(0) - y(d.rest)).style('fill', '#3d4a35');
+  g.append('rect').attr('x', (d) => x(d.label)).attr('width', x.bandwidth())
+    .attr('y', (d) => y(d.total)).attr('height', (d) => y(d.rest) - y(d.total)).style('fill', '#ff4d2e');
+  g.append('rect').attr('x', (d) => x(d.label) - 1).attr('width', x.bandwidth() + 2).attr('y', m.t).attr('height', h - m.t - m.b)
+    .style('fill', 'transparent')
+    .on('pointerenter pointermove', (ev, d) => {
+      tip.hidden = false;
+      tip.textContent = `${d.label} UTC · ${d.total} new · ${d.critical} critical`;
+      const [px] = d3.pointer(ev, el);
+      tip.style.left = Math.min(Math.max(0, px - 70), el.clientWidth - 190) + 'px';
+      tip.style.top = '0px';
+    })
+    .on('pointerleave', () => { tip.hidden = true; });
+});
+
+/* HTML bar lists */
+function barList(el, id, rowsFn) {
+  const r = dash.data(id);
+  el.classList.toggle('dash-skeleton', r.status === 'loading');
+  if (r.status !== 'ok' || !r.data) { el.textContent = r.status === 'error' ? 'Failed to load' : '—'; return; }
+  const items = rowsFn(r.data);
+  const max = d3.max(items, (d) => d.value) || 1;
+  el.replaceChildren(...items.map((d) => {
+    const row = document.createElement('div'); row.className = 'cva-bar';
+    const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = d.label; lab.title = d.label;
+    const trk = document.createElement('div'); trk.className = 'trk';
+    const fill = document.createElement('div'); fill.className = 'fill';
+    fill.style.width = (d.value / max * 100) + '%'; fill.style.background = d.color; trk.append(fill);
+    const val = document.createElement('span'); val.className = 'val'; val.textContent = String(d.value);
+    row.append(lab, trk, val);
+    return row;
+  }));
+}
+const SEV = { critical: ['☢ Critical', '#ff2d55'], high: ['🔥 High', '#ff7a1a'], medium: ['⚠ Medium', '#c9a400'], low: ['🫠 Low', '#5d8a3a'], none: ['None', '#3d4a35'], unscored: ['❓ Unscored (yet)', '#56634d'] };
+dash.draw('sev', (el) => barList(el, 'by_severity', (rows) => rows.map((d) => ({
+  label: (SEV[d.severity] || [d.severity])[0], value: d.count, color: (SEV[d.severity] || [0, '#3d4a35'])[1]
+}))));
+dash.draw('vend', (el) => barList(el, 'by_vendor', (rows) => rows.slice(0, 10).map((d, i) => ({
+  label: d.vendor, value: d.count, color: i === 0 ? '#ff2d55' : '#ff7a1a'
+}))));
+</script>
+
+<script>
+/* Hall of doom */
+dash.draw('vendorsel', (sel) => {
+  const r = dash.data('by_vendor');
+  const rows = r.status === 'ok' && r.data ? r.data : [];
+  sel.replaceChildren(new Option('All vendors', ''), ...rows.map((d) => new Option(`${d.vendor} (${d.count})`, d.vendor)));
+  sel.value = window.cvaState.vendor;
+  if (sel.value !== window.cvaState.vendor) window.cvaState.vendor = sel.value;
+  sel.onchange = () => { window.cvaState.vendor = sel.value; dash.draw('cards'); dash.draw('shown'); };
+});
+document.querySelectorAll('#cva-q').forEach((i) => i.addEventListener('input', () => { window.cvaState.q = i.value.trim().toLowerCase(); dash.draw('cards'); dash.draw('shown'); }));
+document.querySelectorAll('#cva-noauth').forEach((c) => c.addEventListener('change', () => { window.cvaState.noauth = c.checked; dash.draw('cards'); dash.draw('shown'); }));
+
+window.cvaFiltered = () => {
+  const r = dash.data('crit_win');
+  if (r.status !== 'ok' || !r.data) return null;
+  const s = window.cvaState;
+  return r.data.filter((d) => (!s.vendor || d.vendor === s.vendor) && (!s.noauth || d.privileges === 'None') &&
+    (!s.q || [d.id, d.vendor, d.product, d.cwe, d.summary, d.cna].join(' ').toLowerCase().includes(s.q)));
+};
+dash.draw('shown', (el) => { const f = cvaFiltered(); el.textContent = f ? String(f.length) : '—'; });
+
+window.cvaState.sort = 'blast';
+window.cvaState.all = false;
+document.querySelectorAll('#cva-sort').forEach((s) => s.addEventListener('change', () => { window.cvaState.sort = s.value; dash.draw('cards'); }));
+document.querySelectorAll('#cva-more').forEach((b) => b.addEventListener('click', () => { window.cvaState.all = true; dash.draw('cards'); }));
+
+const TIER_LABEL = { 5: 'PLANET-WIDE', 4: 'CONTINENTAL', 3: 'CITY-WIDE', 2: 'NEIGHBOURHOOD', 1: 'YOUR CUBICLE', 0: 'UNKNOWN' };
+
+dash.draw('topblast', (el) => {
+  const r = dash.data('ranked');
+  el.classList.toggle('dash-skeleton', r.status === 'loading');
+  el.textContent = r.status === 'ok' && r.data && r.data[0] ? r.data[0].name : '—';
+});
+
+dash.draw('cards', (el) => {
+  const r = dash.data('ranked');
+  const c = dash.data('crit_win');
+  el.classList.toggle('dash-skeleton', r.status === 'loading' || c.status === 'loading');
+  if (r.status !== 'ok' || c.status !== 'ok' || !r.data || !c.data) { el.textContent = (r.status === 'error' || c.status === 'error') ? 'Failed to load' : '—'; return; }
+  const matching = cvaFiltered() || [];
+  const byKey = d3.group(matching, (d) => d.group);
+  let prods = r.data.filter((p) => byKey.has(p.group));
+  if (window.cvaState.sort === 'score') prods = prods.slice().sort((a, b) => b.worst - a.worst || b.tier - a.tier || b.cves - a.cves);
+  const LIMIT = 30;
+  document.querySelectorAll('#more-row').forEach((m) => { m.hidden = window.cvaState.all || prods.length <= LIMIT; });
+  if (!window.cvaState.all) prods = prods.slice(0, LIMIT);
+  if (!prods.length) {
+    const p = document.createElement('p'); p.className = 'cva-empty';
+    p.textContent = c.data.length ? 'Nothing matches. Enjoy this brief moment of peace.' : 'No criticals in this window. Suspicious. Very suspicious.';
+    el.replaceChildren(p); return;
+  }
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  el.replaceChildren(...prods.map((p, i) => {
+    const card = mk('article', 'cva-prod t' + p.tier);
+    card.id = 'p-' + p.name.replace(/[^A-Za-z0-9]+/g, '-');
+    const head = mk('div', 'cva-prod-head');
+    const rank = mk('span', 'cva-rank', '#' + (window.cvaState.sort === 'blast' ? p.rank : i + 1));
+    const title = mk('div', 'cva-prod-title');
+    title.append(mk('h3', 'cva-pname', p.name), mk('span', 'cva-pvendor', p.vendor));
+    const blast = mk('div', 'cva-blast');
+    blast.setAttribute('aria-label', `Blast radius tier ${p.tier} of 5`);
+    const pips = mk('span', 'cva-pips');
+    for (let k = 1; k <= 5; k++) pips.append(mk('span', k <= p.tier ? '' : 'off', '☢'));
+    const blab = mk('span', 'cva-blab');
+    if (p.label) blab.append(p.label); else if (p.tier) blab.append(TIER_LABEL[p.tier], ' · tier ', String(p.tier)); else blab.append('NOT RATED');
+    blast.append(pips, blab);
+    head.append(rank, title, blast);
+    const reach = mk('p', 'cva-reach');
+    reach.append(mk('span', '', p.reach), mk('span', 'cva-conf' + (p.confidence === 'measured' ? ' measured' : ''), p.confidence));
+    const basis = mk('p', 'cva-basis', p.basis + ' ');
+    if (p.source) { const a = mk('a', '', 'Source'); a.href = p.source; a.target = '_blank'; a.rel = 'noopener'; basis.append(a); }
+    const stats = mk('div', 'cva-pstats');
+    stats.append(mk('b', '', String(p.cves)), p.cves === 1 ? ' critical CVE · worst ' : ' critical CVEs · worst ',
+      mk('b', '', d3.format('.1f')(p.worst)), ' · ', mk('b', '', String(p.noauth)), ' need no login');
+    const list = mk('ul', 'cva-clist');
+    byKey.get(p.group).forEach((d) => {
+      const li = mk('li', d.score >= 10 ? 'ten' : '');
+      const det = mk('details');
+      det.id = 'cve-' + d.id;
+      const sm = mk('summary');
+      const a = mk('a', '', d.id); a.href = d.url; a.target = '_blank'; a.rel = 'noopener';
+      sm.append(a, mk('span', 'sc', d3.format('.1f')(d.score)), mk('span', 'vd', cvaVerdict(d.score, d.id)));
+      const tags = mk('div', 'cva-tags');
+      const tag = (t, bad) => tags.append(mk('span', bad ? 'bad' : '', t));
+      tag('CVSS ' + d.cvss);
+      tag(d.attack_vector, d.attack_vector === 'Network');
+      tag(d.privileges === 'None' ? 'No auth' : 'Auth: ' + d.privileges, d.privileges === 'None');
+      if (d.cwe && d.cwe !== '—') tag(d.cwe);
+      tag('via ' + d.cna);
+      det.append(sm, mk('p', 'sum', d.summary), tags);
+      li.append(det);
+      list.append(li);
+    });
+    card.append(head, reach, basis, stats, list);
+    return card;
+  }));
+});
+
+/* ---------- home for Christmas ---------- */
+window.cvaState.cap = 20;
+document.querySelectorAll('#cva-cap').forEach((i) => i.addEventListener('input', () => {
+  const v = Number(i.value);
+  if (Number.isFinite(v) && v > 0) { window.cvaState.cap = v; dash.draw('xmas'); dash.draw('xmasnote'); }
+}));
+window.cvaXmas = () => {
+  const s = dash.data('stats'), p = dash.data('pace');
+  if (s.status !== 'ok' || p.status !== 'ok' || !s.data || !s.data[0] || !p.data || !p.data[0]) return null;
+  const backlog = s.data[0].crit, inflow = p.data[0].per_week, cap = window.cvaState.cap;
+  const now = new Date();
+  const xmasThis = new Date(now.getFullYear(), 11, 24);
+  const target = now <= xmasThis ? xmasThis : new Date(now.getFullYear() + 1, 11, 24);
+  const weeksLeft = Math.max(1 / 7, (target - now) / (7 * 864e5));
+  const net = cap - inflow;
+  let years = null, xmasYear = null;
+  if (net > 0) {
+    years = backlog / net / 52.18;
+    const done = new Date(now.getTime() + years * 365.25 * 864e5);
+    xmasYear = done <= new Date(done.getFullYear(), 11, 24) ? done.getFullYear() : done.getFullYear() + 1;
+  }
+  const needed = Math.ceil(inflow + backlog / weeksLeft);
+  return { backlog, inflow, cap, years, xmasYear, needed, times: needed / cap, targetYear: target.getFullYear() };
+};
+dash.draw('xmas', (el) => {
+  const x = cvaXmas();
+  el.classList.toggle('dash-skeleton', dash.data('stats').status === 'loading' || dash.data('pace').status === 'loading');
+  if (!x) { el.textContent = '—'; return; }
+  const b = document.createElement('b');
+  if (x.years === null) {
+    b.textContent = 'NEVER 🎅';
+    el.replaceChildren('…', b, document.createElement('br'), 'New criticals arrive faster than you patch, so the queue only grows.');
+    return;
+  }
+  b.textContent = (x.years < 10 ? d3.format('.1f')(x.years) : d3.format(',.0f')(x.years)) + ' years';
+  el.replaceChildren('…in ', b, document.createElement('br'),
+    x.xmasYear === x.targetYear ? `Christmas ${x.xmasYear} 🎉 Pack your bags.` : `That's Christmas ${x.xmasYear}. Tell the family to start without you.`);
+});
+dash.draw('xmasnote', (el) => {
+  const x = cvaXmas();
+  if (!x) { el.textContent = '—'; return; }
+  const B = (t) => { const e = document.createElement('b'); e.textContent = t; return e; };
+  const punch = x.times <= 1 ? 'Your team already manages that. Suspicious.'
+    : x.times <= 3 ? 'Doable, if nobody takes holiday.'
+    : x.times <= 20 ? 'Start recruiting elves.'
+    : 'Even Santa\'s workshop would say no.';
+  el.replaceChildren('Backlog: ', B(String(x.backlog)), ' criticals in this window. New ones arrive at about ',
+    B(String(x.inflow)), ` a week (14-day average). To be home by 24 Dec ${x.targetYear} you'd need ~${d3.format(',')(x.needed)} patched a week: ${x.times < 10 ? d3.format('.1f')(x.times) : d3.format(',.0f')(x.times)}× your team. ${punch}`);
+});
+
+/* ---------- 1998 mode ---------- */
+dash.draw('ticker', (el) => {
+  const s = dash.data('stats'), r = dash.data('ranked');
+  if (s.status !== 'ok' || !s.data || !s.data[0] || r.status !== 'ok' || !r.data) { el.textContent = '★ LOADING THE APOCALYPSE… PLEASE WAIT… DIAL-UP DETECTED ★'; return; }
+  const st = s.data[0];
+  const B = (text) => { const e = document.createElement('b'); e.textContent = text; return e; };
+  const win = ({ today: 'ON THE LAST DAY', '7d': 'IN THE LAST 7 DAYS', '14d': 'IN THE LAST 14 DAYS' })[cvaWin()] || '';
+  const parts = ['🚨 BREAKING NEWS 🚨 ', B(String(st.crit)), ` CRITICAL CVEs ${win} ★ WORST SCORE: `, B(d3.format('.1f')(st.max)), ' ★ WIDEST BLAST RADIUS: '];
+  const top = r.data.slice(0, 3);
+  top.forEach((p, i) => { parts.push(B(p.name.toUpperCase())); if (i < top.length - 1) parts.push(', '); });
+  parts.push(' ★ BIGGEST OFFENDER: ', B(String(st.top_vendor).toUpperCase()),
+    ' ★ HAVE YOU TRIED TURNING THE INTERNET OFF AND ON AGAIN? ★ THIS TICKER IS SPONSORED BY NOBODY ★ SIGN MY GUESTBOOK ★ REMEMBER TO PATCH ★');
+  el.replaceChildren(...parts);
+});
+dash.draw('counter', (el) => {
+  const s = dash.data('stats');
+  el.textContent = s.status === 'ok' && s.data && s.data[0] ? String(s.data[0].total).padStart(6, '0') : '000000';
+});
+(() => {
+  const setGeo = (on) => {
+    document.querySelectorAll('#cva').forEach((w) => w.classList.toggle('geo', on));
+    try { localStorage.setItem('cva-geo', on ? '1' : '0'); } catch (e) { /* no storage, no memory, very 1998 */ }
+  };
+  try { if (localStorage.getItem('cva-geo') === '0') setGeo(false); } catch (e) { /* ignore */ }
+  document.querySelectorAll('#cva-2026').forEach((b) => b.addEventListener('click', () => setGeo(false)));
+  document.querySelectorAll('#cva-1998').forEach((b) => b.addEventListener('click', () => setGeo(true)));
+  document.querySelectorAll('#cva-gb').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('#gb-msg').forEach((p) => { p.hidden = !p.hidden; });
+  }));
+  document.querySelectorAll('#cva-random').forEach((b) => b.addEventListener('click', () => {
+    const rows = cvaFiltered() || [];
+    if (!rows.length) return;
+    const pick = rows[Math.floor(Math.random() * rows.length)];
+    window.cvaState.all = true;
+    dash.draw('cards');
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setTimeout(() => {
+      const d = document.getElementById('cve-' + pick.id);
+      if (d) { d.open = true; d.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'center' }); }
+    }, 80);
+  }));
+})();
+</script>
+</div>
+</body>
+</html>
