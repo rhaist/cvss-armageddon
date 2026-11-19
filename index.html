@@ -154,7 +154,32 @@ html,body{margin:0;background:#050505;color:#e9f2dd}
   .cva-quip span[data-draw]{animation:cvaFade .5s ease-out}
 }
 @keyframes cvaSlide{from{background-position:0 0}to{background-position:40px 0}}
-@keyframes cvaShake{25%{transform:translate(1px,-1px)}75%{transform:translate(-1px,1px)}}
+@keyframes cvaShake{25%{transform:translate(3px,-2px) rotate(.3deg)}50%{transform:translate(-2px,2px)}75%{transform:translate(-3px,-1px) rotate(-.3deg)}}
+/* ---------- the panic alarm ---------- */
+.cva-alarm{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(90,0,0,.9);overflow:hidden}
+.cva-alarm[hidden]{display:none}
+.cva-beacon{position:absolute;left:50%;top:50%;width:250vmax;height:250vmax;margin:-125vmax 0 0 -125vmax;background:conic-gradient(rgba(255,0,0,.55) 0deg,transparent 35deg,transparent 180deg,rgba(255,0,0,.55) 180deg,transparent 215deg,transparent 360deg);pointer-events:none}
+.cva-alarm-box{position:relative;width:100%;max-width:560px;max-height:100%;overflow:auto;background:#000;border:6px solid #ff0000;box-shadow:0 0 0 4px #ffff00,0 0 60px #ff0000;padding:20px;text-align:center;color:#fff;font-family:"Courier New",monospace}
+.cva-alarm-k{margin:0;color:#ffff00;font:bold 13px "Courier New",monospace;letter-spacing:.2em}
+.cva-alarm-h{margin:8px 0;font:400 clamp(44px,12vw,84px)/1 Impact,Haettenschweiler,"Arial Black",sans-serif;color:#ff0000;text-shadow:3px 3px 0 #ffff00}
+.cva-alarm-sub{margin:0 0 12px;font:bold 15px/1.45 Verdana,Tahoma,sans-serif}
+.cva-alarm-sub b{color:#ffff00;font-size:20px}
+.cva-alarm-log{text-align:left;background:#001100;color:#00ff00;border:3px inset #808080;padding:10px;min-height:10em;margin:0 0 12px;font:13px/1.5 "Courier New",monospace;white-space:pre-wrap}
+.cva-alarm-count{margin:0 0 14px;font:bold 18px Verdana,Tahoma,sans-serif;color:#ffff00}
+.cva-alarm-count b{font-size:30px;color:#ff0000}
+.cva-alarm-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.cva-alarm-btn{flex:1 1 180px;min-height:44px;font:bold 14px Tahoma,"MS Sans Serif",Arial,sans-serif;padding:10px 16px;border:3px outset #e0e0e0;background:#c0c0c0;color:#000;cursor:pointer}
+.cva-alarm-btn:active{border-style:inset}
+@media (prefers-reduced-motion:no-preference){
+  .cva-beacon{animation:cvaSpin 1.6s linear infinite}
+  .cva-alarm{animation:cvaRedPulse 1.2s ease-in-out infinite}
+  .cva-alarm-h{animation:cvaThrob .6s ease-in-out infinite alternate}
+  .cva-alarm-box{animation:cvaDrop .35s cubic-bezier(.2,1.6,.4,1)}
+}
+@keyframes cvaSpin{to{transform:rotate(360deg)}}
+@keyframes cvaRedPulse{50%{background:rgba(150,0,0,.92)}}
+@keyframes cvaThrob{to{transform:scale(1.07)}}
+@keyframes cvaDrop{from{transform:translateY(-40px) scale(.9);opacity:0}}
 @keyframes cvaFade{from{opacity:0}to{opacity:1}}
 .cva-prodlist{grid-template-columns:repeat(auto-fill,minmax(min(100%,440px),1fr))}
 .cva-prod{background:var(--panel);border:1px solid var(--line);border-left:6px solid #56634d;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
@@ -399,6 +424,21 @@ html,body{margin:0;background:#050505;color:#e9f2dd}
   <p class="cva-public">Public snapshot edition · CVE data as of <span data-draw="asof2">—</span> UTC · blast-radius tiers are estimates · not affiliated with any vendor named here</p>
 </div>
 
+<div class="cva-alarm" id="cva-alarm" hidden role="alertdialog" aria-modal="true" aria-labelledby="cva-alarm-h">
+  <div class="cva-beacon" aria-hidden="true"></div>
+  <div class="cva-alarm-box">
+    <p class="cva-alarm-k">⚠ MAJOR INCIDENT DECLARED ⚠</p>
+    <h2 class="cva-alarm-h" id="cva-alarm-h">DEFCON 1</h2>
+    <p class="cva-alarm-sub"><b id="cva-alarm-n">—</b> <span id="cva-alarm-sub2">criticals and counting.</span></p>
+    <pre class="cva-alarm-log" id="cva-alarm-log" aria-live="polite"></pre>
+    <p class="cva-alarm-count" id="cva-alarm-count">Self-destruct in <b id="cva-alarm-t">10</b></p>
+    <div class="cva-alarm-actions">
+      <button class="cva-alarm-btn" id="cva-calm" type="button">😮‍💨 Calm down</button>
+      <button class="cva-alarm-btn" id="cva-mute" type="button">🔇 Kill the siren</button>
+    </div>
+  </div>
+</div>
+
 <script>
 dash.calc('crit_win', {
   inputs: ['critical'],
@@ -574,11 +614,96 @@ dash.draw('quip', {
   update: () => {}
 });
 
-document.querySelectorAll('#panic').forEach((btn) => btn.addEventListener('click', () => {
-  const on = btn.getAttribute('aria-pressed') !== 'true';
-  btn.setAttribute('aria-pressed', String(on));
-  document.querySelectorAll('#cva').forEach((w) => w.classList.toggle('panic', on));
-}));
+/* ---------- the panic button ---------- */
+(() => {
+  const LINES = [
+    '> Declaring major incident... OK',
+    '> Paging on-call... voicemail full',
+    '> Unplugging the internet... cable not found',
+    '> Blaming DNS... OK',
+    '> Calling the vendor... on hold (position 4,817)',
+    '> Locating the SBOM... SBOM not found',
+    '> Opening Jira ticket... assigned to "someone"',
+    '> Rotating all credentials... including the coffee machine',
+    '> Requesting emergency budget... meeting booked for Q3',
+    '> Restoring from backup... backup is on the affected NAS',
+    '> Applying patch... patch requires a reboot of the internet',
+    '> Drafting press release... "We take security seriously"',
+    '> Checking cyber insurance policy... page 47 says no',
+    '> Updating LinkedIn... "Open to work"',
+    '> Consulting the incident response plan... last edited 2019',
+    '> Asking the intern... the intern has a theory'
+  ];
+  const $ = (id) => document.getElementById(id);
+  const alarm = $('cva-alarm');
+  if (!alarm) return;
+  let timers = [], snd = null, opener = null;
+
+  const stopSiren = () => { if (snd) { try { snd.o.stop(); } catch (e) { /* already stopped */ } snd = null; } };
+  const siren = () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC(), o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'square'; g.gain.value = 0.035;
+      o.connect(g); g.connect(ctx.destination);
+      const t = ctx.currentTime;
+      for (let i = 0; i < 4; i++) {
+        o.frequency.setValueAtTime(620, t + i * 0.8);
+        o.frequency.linearRampToValueAtTime(1180, t + i * 0.8 + 0.4);
+        o.frequency.linearRampToValueAtTime(620, t + i * 0.8 + 0.8);
+      }
+      o.start(t); o.stop(t + 3.2);
+      o.onended = () => { ctx.close(); snd = null; };
+      snd = { o };
+    } catch (e) { /* no sound, no problem */ }
+  };
+
+  const close = () => {
+    timers.forEach(clearTimeout); timers = [];
+    stopSiren();
+    alarm.hidden = true;
+    document.querySelectorAll('#cva').forEach((w) => w.classList.remove('panic'));
+    document.querySelectorAll('#panic').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+    if (opener) opener.focus();
+  };
+
+  const open = (btn) => {
+    opener = btn;
+    timers.forEach(clearTimeout); timers = [];
+    const s = dash.data('stats');
+    $('cva-alarm-n').textContent = s.status === 'ok' && s.data && s.data[0] ? String(s.data[0].crit) : 'Hundreds of';
+    $('cva-alarm-h').textContent = 'DEFCON 1';
+    $('cva-alarm-sub2').textContent = 'criticals and counting. Remain calm. Do not remain calm.';
+    $('cva-alarm-count').hidden = false;
+    $('cva-alarm-t').textContent = '10';
+    const log = $('cva-alarm-log');
+    log.textContent = '';
+    const picks = LINES.slice().sort(() => Math.random() - 0.5).slice(0, 6);
+    picks.forEach((line, i) => timers.push(setTimeout(() => { log.textContent += (i ? '\n' : '') + line; }, 500 + i * 800)));
+    for (let n = 9; n >= 0; n--) {
+      timers.push(setTimeout(() => {
+        $('cva-alarm-t').textContent = String(n);
+        if (n === 0) {
+          $('cva-alarm-h').textContent = 'JUST KIDDING';
+          $('cva-alarm-sub2').textContent = 'criticals are still there, though. Self-destruct postponed. Go patch something.';
+          $('cva-alarm-count').hidden = true;
+          log.textContent += '\n> Panic complete. Resuming normal levels of dread.';
+        }
+      }, (10 - n) * 1000));
+    }
+    document.querySelectorAll('#cva').forEach((w) => w.classList.add('panic'));
+    btn.setAttribute('aria-pressed', 'true');
+    alarm.hidden = false;
+    $('cva-calm').focus();
+    siren();
+  };
+
+  document.querySelectorAll('#panic').forEach((b) => b.addEventListener('click', () => open(b)));
+  $('cva-calm').addEventListener('click', close);
+  $('cva-mute').addEventListener('click', stopSiren);
+  alarm.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+})();
 </script>
 
 <script>
